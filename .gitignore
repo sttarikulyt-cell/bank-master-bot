@@ -1,0 +1,5 @@
+node_modules/
+.env
+.vercel
+.firebase/
+firebase-debug.log
