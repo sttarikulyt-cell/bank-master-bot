@@ -23,6 +23,16 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 const FV = admin.firestore.FieldValue;
+
+const app = express();
+app.use(express.json({ limit: '100kb' }));
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, X-Init-Data, Authorization');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
 const EARNED_TYPES = new Set(['task_reward', 'ad_reward', 'referral_bonus', 'daily_login_bonus', 'admin_adjustment']);
