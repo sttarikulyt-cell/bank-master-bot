@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bank Master — Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d1020;--panel:#161a2e;--line:#262c48;--txt:#eef1ff;--mut:#8b93b8;--a:#7c5cff;--b:#22d3ee;--ok:#34d399;--bad:#f87171;--warn:#fbbf24}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Hind Siliguri',sans-serif;background:var(--bg);color:var(--txt)}
+.wrap{max-width:1100px;margin:0 auto;padding:20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin-bottom:16px}
+input,select{width:100%;background:#0f1324;border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:10px;font:inherit;margin-bottom:10px}
+input[type=checkbox]{width:auto;margin:0}
+label{font-size:13px;color:var(--mut);display:block;margin-bottom:4px}
+button{background:linear-gradient(135deg,var(--a),var(--b));border:0;color:#fff;padding:9px 14px;border-radius:10px;font:inherit;cursor:pointer;margin-right:4px}
+button.ghost{background:transparent;border:1px solid var(--line)}
+button.bad{background:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td input{margin:0;padding:6px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.stat{background:#0f1324;border-radius:14px;padding:16px}
+.stat b{font-size:26px;display:block;margin-top:4px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.tab{background:var(--panel);border:1px solid var(--line)}
+.tab.on{background:linear-gradient(135deg,var(--a),var(--b))}
+.hide{display:none!important}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.row>div{flex:1;min-width:140px}
+.pill{padding:3px 10px;border-radius:99px;font-size:12px}
+.pending{background:rgba(251,191,36,.15);color:var(--warn)}
+.approved{background:rgba(52,211,153,.15);color:var(--ok)}
+.rejected{background:rgba(248,113,113,.15);color:var(--bad)}
+.muted{color:var(--mut);font-size:13px}
+.msg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222a4a;padding:10px 16px;border-radius:12px;display:none;z-index:9}
+.scroll{overflow:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- লগইন -->
+  <div id="login" class="card" style="max-width:380px;margin:80px auto">
+    <h2 style="margin-bottom:14px">অ্যাডমিন লগইন</h2>
+    <label>ইমেইল</label><input id="email" type="email">
+    <label>পাসওয়ার্ড</label><input id="pass" type="password">
+    <button id="loginBtn" style="width:100%">লগইন</button>
+  </div>
+
+  <!-- ড্যাশবোর্ড -->
+  <div id="app" class="hide">
+    <div class="row" style="justify-content:space-between;margin-bottom:16px">
+      <h2>⚙️ Bank Master অ্যাডমিন</h2>
+      <button class="ghost" id="logoutBtn">লগআউট</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab on" data-tab="overview">ড্যাশবোর্ড</button>
+      <button class="tab" data-tab="withdrawals">উইথড্র</button>
+      <button class="tab" data-tab="tasks">টাস্ক</button>
+      <button class="tab" data-tab="settings">সেটিংস</button>
+    </div>
+
+    <section id="tab-overview">
+      <div class="grid" id="stats"></div>
+      <div class="card" style="margin-top:16px">
+        <h3 style="margin-bottom:10px">টপ ইউজার (ব্যালেন্স অনুযায়ী)</h3>
+        <div class="scroll"><table>
+          <thead><tr><th>নাম</th><th>ID</th><th>ব্যালেন্স</th><th>রেফার</th></tr></thead>
+          <tbody id="topUsers"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <section id="tab-withdrawals" class="hide">
+      <div class="card">
+        <div class="scroll"><table>
+          <thead><tr><th>ইউজার</th><th>মেথড</th><th>নম্বর</th><th>পরিমাণ</th><th>স্ট্যাটাস</th><th>অ্যাকশন</th></tr></thead>
+          <tbody id="wdBody"></tbody>
+        </table></div>
+        <p class="muted" style="margin-top:10px">নোট: বিকাশ/নগদে টাকা নিজে পাঠিয়ে তারপর "অনুমোদন" দিন। "বাতিল" করলে টাকা ইউজারের ব্যালেন্সে ফেরত যাবে।</p>
+      </div>
+    </section>
+
+    <section id="tab-tasks" class="hide">
+      <div class="card">
+        <h3 style="margin-bottom:10px">নতুন টাস্ক</h3>
+        <label>শিরোনাম</label><input id="tTitle">
+        <label>বর্ণনা</label><input id="tDesc">
+        <label>লিংক (https://...)</label><input id="tUrl">
+        <div class="row">
+          <div><label>পুরস্কার (৳)</label><input id="tReward" type="number"></div>
+          <div><label>অপেক্ষার সময় (সেকেন্ড)</label><input id="tDur" type="number" value="0"></div>
+        </div>
+        <div class="row">
+          <div><label><input id="tRec" type="checkbox"> রিকারিং টাস্ক</label></div>
+          <div><label>রিসেট সময় (সেকেন্ড)</label><input id="tReset" type="number" value="0"></div>
+        </div>
+        <label>কোড (ঐচ্ছিক, দিলে ইউজারকে কোড লিখতে হবে)</label><input id="tCode">
+        <button id="addTask">টাস্ক যোগ করুন</button>
+      </div>
+      <div class="card">
+        <div class="scroll"><table>
+          <thead><tr><th>টাস্ক</th><th>পুরস্কার</th><th>অপেক্ষা</th><th>ধরন</th><th>চালু</th><th>অ্যাকশন</th></tr></thead>
+          <tbody id="taskList"></tbody>
+        </table></div>
+      </div>
+    </section>
+
+    <section id="tab-settings" class="hide">
+      <div class="card">
+        <h3 style="margin-bottom:10px">সাধারণ সেটিংস</h3>
+        <label>নোটিশ (ইউজার অ্যাপে দেখাবে)</label><input id="sNotice">
+        <div class="row">
+          <div><label>ডেইলি বোনাস (৳)</label><input id="sDaily" type="number"></div>
+          <div><label>স্ট্রিক প্রতি দিনে বাড়বে (৳)</label><input id="sStep" type="number"></div>
+          <div><label>স্ট্রিক সর্বোচ্চ (দিন)</label><input id="sCap" type="number"></div>
+        </div>
+        <div class="row">
+          <div><label>প্রতি রেফারেল বোনাস (৳)</label><input id="sRef" type="number"></div>
+          <div><label>উইথড্রের জন্য ন্যূনতম রেফারেল</label><input id="sMinRef" type="number"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:10px">অ্যাড নেটওয়ার্ক</h3>
+        <div class="scroll"><table>
+          <thead><tr><th>নেটওয়ার্ক</th><th>চালু</th><th>পুরস্কার (৳)</th><th>দৈনিক লিমিট</th><th>সময় (সে.)</th><th>Zone / Block ID</th></tr></thead>
+          <tbody id="adRows"></tbody>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:10px">পেমেন্ট মেথড</h3>
+        <div class="scroll"><table>
+          <thead><tr><th>মেথড</th><th>চালু</th><th>ন্যূনতম উইথড্র (৳)</th></tr></thead>
+          <tbody id="pmRows"></tbody>
+        </table></div>
+      </div>
+
+      <button id="saveSettings" style="width:100%;padding:14px;margin-bottom:16px">সব সেটিংস সংরক্ষণ করুন</button>
+
+      <div class="card">
+        <h3 style="margin-bottom:10px">ব্যালেন্স সমন্বয়</h3>
+        <div class="row">
+          <div><label>ইউজার ID</label><input id="adjUser"></div>
+          <div><label>পরিমাণ (+ যোগ / − বিয়োগ)</label><input id="adjAmt" type="number"></div>
+          <div><label>কারণ</label><input id="adjReason"></div>
+        </div>
+        <button id="adjBtn">প্রয়োগ করুন</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="msg" id="msg"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+// ↓↓↓ আপনার Vercel API URL বসান ↓↓↓
+const API_URL = "https://YOUR-PROJECT.vercel.app";
+
+const fbApp = initializeApp({
+  apiKey: "AIzaSyCodwCKCbau1Kf-ChefNLcln0v-RrhVSBY",
+  authDomain: "bank-master-bot.firebaseapp.com",
+  projectId: "bank-master-bot",
+});
+const auth = getAuth(fbApp);
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function msg(t) {
+  const m = $("#msg");
+  m.textContent = t;
+  m.style.display = "block";
+  clearTimeout(msg.timer);
+  msg.timer = setTimeout(() => m.style.display = "none", 2500);
+}
+
+async function api(path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const r = await fetch(API_URL + path, {
+    method: body !== undefined ? "POST" : "GET",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.message || "ত্রুটি হয়েছে");
+  return j;
+}
+
+let D = null;
+
+async function loadAll() {
+  D = await api("/api/admin/overview");
+  renderOverview();
+  renderWithdrawals();
+  renderTasks();
+  renderSettings();
+}
+
+// ---------- লগইন ----------
+$("#loginBtn").onclick = async () => {
+  try {
+    await signInWithEmailAndPassword(auth, $("#email").value.trim(), $("#pass").value);
+  } catch {
+    msg("লগইন ব্যর্থ: ইমেইল/পাসওয়ার্ড দেখুন");
+  }
+};
+$("#logoutBtn").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async user => {
+  $("#login").classList.toggle("hide", !!user);
+  $("#app").classList.toggle("hide", !user);
+  if (user) {
+    try { await loadAll(); } catch (e) { msg(e.message); }
+  }
+});
+
+// ---------- ট্যাব ----------
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("section[id^=tab-]").forEach(s => s.classList.toggle("hide", s.id !== "tab-" + b.dataset.tab));
+});
+
+// ---------- ড্যাশবোর্ড ----------
+function renderOverview() {
+  const s = D.stats;
+  const cards = [
+    ["মোট ইউজার", s.users],
+    ["পেন্ডিং উইথড্র", s.pendingWithdrawals],
+    ["পেন্ডিং পরিমাণ", s.pendingAmount + " ৳"],
+    ["সক্রিয় টাস্ক", D.tasks.filter(t => t.active).length],
+  ];
+  $("#stats").innerHTML = cards.map(([k, v]) => `<div class="stat"><span class="muted">${k}</span><b>${esc(v)}</b></div>`).join("");
+  $("#topUsers").innerHTML = D.topUsers.map(u => `<tr>
+    <td>${esc(u.userName)}</td><td>${esc(u.userId)}</td><td>${esc(u.balance)} ৳</td><td>${esc(u.referralCount || 0)}</td>
+  </tr>`).join("") || `<tr><td colspan="4">কোনো ইউজার নেই</td></tr>`;
+}
+
+// ---------- উইথড্র ----------
+function renderWithdrawals() {
+  $("#wdBody").innerHTML = D.withdrawals.map(w => `<tr>
+    <td>${esc(w.userName)}<br><span class="muted">${esc(w.userId)}</span></td>
+    <td>${esc(w.method)}</td>
+    <td>${esc(w.account)}</td>
+    <td>${esc(w.amount)} ৳</td>
+    <td><span class="pill ${esc(w.status)}">${esc(w.status)}</span></td>
+    <td>${w.status === "pending"
+      ? `<button data-act="approve" data-id="${esc(w.id)}">অনুমোদন</button><button class="bad" data-act="reject" data-id="${esc(w.id)}">বাতিল</button>`
+      : "—"}</td>
+  </tr>`).join("") || `<tr><td colspan="6">কোনো উইথড্র নেই</td></tr>`;
+}
+
+$("#wdBody").onclick = async e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  let reason = "";
+  if (b.dataset.act === "reject") {
+    reason = prompt("বাতিলের কারণ লিখুন") || "";
+    if (!reason) return;
+  }
+  try {
+    await api("/api/admin/withdrawal", { id: b.dataset.id, action: b.dataset.act, reason });
+    msg("আপডেট হয়েছে");
+    await loadAll();
+  } catch (err) { msg(err.message); }
+};
+
+// ---------- টাস্ক ----------
+function renderTasks() {
+  $("#taskList").innerHTML = D.tasks.map(t => `<tr>
+    <td><b>${esc(t.title)}</b><br><span class="muted">${esc(t.description || "")}</span></td>
+    <td>${esc(t.reward)} ৳</td>
+    <td>${esc(t.durationSeconds || 0)} সে.</td>
+    <td>${t.recurring ? "রিকারিং" : "একবার"}${t.requiredCode ? " · কোড" : ""}</td>
+    <td>${t.active ? "✅" : "⏸️"}</td>
+    <td>
+      <button class="ghost" data-tact="toggle" data-id="${esc(t.id)}">চালু/বন্ধ</button>
+      <button class="bad" data-tact="delete" data-id="${esc(t.id)}">মুছুন</button>
+    </td>
+  </tr>`).join("") || `<tr><td colspan="6">কোনো টাস্ক নেই</td></tr>`;
+}
+
+$("#taskList").onclick = async e => {
+  const b = e.target.closest("button[data-tact]");
+  if (!b) return;
+  if (b.dataset.tact === "delete" && !confirm("টাস্কটি মুছে ফেলবেন?")) return;
+  try {
+    await api("/api/admin/task", { action: b.dataset.tact, id: b.dataset.id });
+    msg("ঠিক আছে");
+    await loadAll();
+  } catch (err) { msg(err.message); }
+};
+
+$("#addTask").onclick = async () => {
+  try {
+    await api("/api/admin/task", {
+      action: "create",
+      data: {
+        title: $("#tTitle").value,
+        description: $("#tDesc").value,
+        url: $("#tUrl").value,
+        reward: $("#tReward").value,
+        durationSeconds: $("#tDur").value,
+        recurring: $("#tRec").checked,
+        resetIntervalSeconds: $("#tReset").value,
+        requiredCode: $("#tCode").value,
+      },
+    });
+    msg("টাস্ক যোগ হয়েছে");
+    ["#tTitle", "#tDesc", "#tUrl", "#tReward", "#tCode"].forEach(id => $(id).value = "");
+    $("#tDur").value = 0; $("#tReset").value = 0; $("#tRec").checked = false;
+    await loadAll();
+  } catch (err) { msg(err.message); }
+};
+
+// ---------- সেটিংস ----------
+function renderSettings() {
+  const s = D.settings;
+  $("#sNotice").value = s.notice || "";
+  $("#sDaily").value = s.dailyLoginBonus;
+  $("#sStep").value = s.streakStep;
+  $("#sCap").value = s.streakCap;
+  $("#sRef").value = s.referralBonus;
+  $("#sMinRef").value = s.minReferralsForWithdrawal;
+
+  $("#adRows").innerHTML = Object.entries(s.adNetworks).map(([code, n]) => `<tr data-code="${esc(code)}">
+    <td>${esc(n.name)}</td>
+    <td><input type="checkbox" class="a-active" ${n.active ? "checked" : ""}></td>
+    <td><input class="a-reward" type="number" step="0.01" value="${esc(n.reward)}"></td>
+    <td><input class="a-limit" type="number" value="${esc(n.dailyLimit)}"></td>
+    <td><input class="a-timer" type="number" value="${esc(n.timerSeconds)}"></td>
+    <td><input class="a-zone" value="${esc(n.zoneId)}"></td>
+  </tr>`).join("");
+
+  $("#pmRows").innerHTML = Object.entries(s.paymentMethods).map(([code, m]) => `<tr data-code="${esc(code)}">
+    <td>${esc(m.name)}</td>
+    <td><input type="checkbox" class="p-active" ${m.active ? "checked" : ""}></td>
+    <td><input class="p-min" type="number" value="${esc(m.minWithdrawal)}"></td>
+  </tr>`).join("");
+}
+
+$("#saveSettings").onclick = async () => {
+  const adNetworks = {};
+  document.querySelectorAll("#adRows tr").forEach(tr => {
+    adNetworks[tr.dataset.code] = {
+      active: tr.querySelector(".a-active").checked,
+      reward: tr.querySelector(".a-reward").value,
+      dailyLimit: tr.querySelector(".a-limit").value,
+      timerSeconds: tr.querySelector(".a-timer").value,
+      zoneId: tr.querySelector(".a-zone").value.trim(),
+    };
+  });
+  const paymentMethods = {};
+  document.querySelectorAll("#pmRows tr").forEach(tr => {
+    paymentMethods[tr.dataset.code] = {
+      active: tr.querySelector(".p-active").checked,
+      minWithdrawal: tr.querySelector(".p-min").value,
+    };
+  });
+  try {
+    await api("/api/admin/settings", {
+      notice: $("#sNotice").value,
+      dailyLoginBonus: $("#sDaily").value,
+      streakStep: $("#sStep").value,
+      streakCap: $("#sCap").value,
+      referralBonus: $("#sRef").value,
+      minReferralsForWithdrawal: $("#sMinRef").value,
+      adNetworks,
+      paymentMethods,
+    });
+    msg("সেটিংস সংরক্ষিত হয়েছে");
+    await loadAll();
+  } catch (err) { msg(err.message); }
+};
+
+$("#adjBtn").onclick = async () => {
+  try {
+    await api("/api/admin/adjust", {
+      userId: $("#adjUser").value,
+      amount: $("#adjAmt").value,
+      reason: $("#adjReason").value,
+    });
+    msg("ব্যালেন্স আপডেট হয়েছে");
+    await loadAll();
+  } catch (err) { msg(err.message); }
+};
+</script>
+</body>
+</html>
