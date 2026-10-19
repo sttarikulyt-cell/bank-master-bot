@@ -418,6 +418,7 @@ app.post('/api/withdraw', userAuth, wrap(async (req, res) => {
   res.json({ success: true, ...result });
 }));
 
+
 // ================= অ্যাডমিন API =================
 function cleanTask(d = {}) {
   const title = String(d.title || '').trim().slice(0, 120);
@@ -492,4 +493,141 @@ app.get('/api/admin/overview', adminAuth, wrap(async (req, res) => {
 }));
 
 app.post('/api/admin/task', adminAuth, wrap(async (req, res) => {
-  const { action, id, data }
+  const { action, id, data } = req.body || {};
+  const col = db.collection('tasks');
+  if (action === 'create') {
+    await col.add({ ...cleanTask(data), active: true, createdAt: FV.serverTimestamp() });
+  } else if (action === 'update') {
+    await col.doc(String(id)).update(cleanTask(data));
+  } else if (action === 'toggle') {
+    const d = await col.doc(String(id)).get();
+    if (!d.exists) throw httpError(404, 'টাস্ক নেই');
+    await col.doc(String(id)).update({ active: !d.data().active });
+  } else if (action === 'delete') {
+    await col.doc(String(id)).delete();
+  } else {
+    throw httpError(400, 'ভুল অ্যাকশন');
+  }
+  res.json({ success: true });
+}));
+
+app.post('/api/admin/withdrawal', adminAuth, wrap(async (req, res) => {
+  const { id, action, reason } = req.body || {};
+  const wref = db.collection('withdrawals').doc(String(id));
+  await db.runTransaction(async tx => {
+    const w = await tx.get(wref);
+    if (!w.exists) throw httpError(404, 'উইথড্র পাওয়া যায়নি');
+    const d = w.data();
+    if (d.status !== 'pending') throw httpError(409, 'ইতিমধ্যে প্রক্রিয়া হয়েছে');
+    const uref = db.collection('users').doc(d.userId);
+
+    if (action === 'approve') {
+      tx.update(wref, { status: 'approved', processedAt: FV.serverTimestamp(), processedBy: req.adminUid });
+      tx.update(uref, { totalWithdrawn: FV.increment(d.amount) });
+    } else if (action === 'reject') {
+      const u = await tx.get(uref);
+      tx.update(wref, {
+        status: 'rejected',
+        rejectionReason: String(reason || '').slice(0, 200),
+        processedAt: FV.serverTimestamp(),
+        processedBy: req.adminUid,
+      });
+      if (u.exists) creditTx(tx, d.userId, u.data(), d.amount, 'withdrawal_refund', String(id));
+    } else {
+      throw httpError(400, 'ভুল অ্যাকশন');
+    }
+  });
+  res.json({ success: true });
+}));
+
+app.post('/api/admin/settings', adminAuth, wrap(async (req, res) => {
+  const d = req.body || {};
+  const patch = {};
+  if (d.notice !== undefined) patch.notice = String(d.notice).slice(0, 300);
+  if (d.dailyLoginBonus !== undefined) patch.dailyLoginBonus = num(d.dailyLoginBonus);
+  if (d.streakStep !== undefined) patch.streakStep = num(d.streakStep);
+  if (d.streakCap !== undefined) patch.streakCap = Math.floor(num(d.streakCap));
+  if (d.referralBonus !== undefined) patch.referralBonus = num(d.referralBonus);
+  if (d.minReferralsForWithdrawal !== undefined) patch.minReferralsForWithdrawal = Math.floor(num(d.minReferralsForWithdrawal));
+  if (d.adNetworks) patch.adNetworks = sanitizeNetworks(d.adNetworks);
+  if (d.paymentMethods) patch.paymentMethods = sanitizeMethods(d.paymentMethods);
+  await db.collection('settings').doc('config').set(patch, { merge: true });
+  res.json({ success: true });
+}));
+
+app.post('/api/admin/adjust', adminAuth, wrap(async (req, res) => {
+  const uid = String(req.body.userId || '').trim();
+  const amount = Number(req.body.amount);
+  if (!uid || !Number.isFinite(amount) || amount === 0) throw httpError(400, 'তথ্য সঠিক নয়');
+  const ref = db.collection('users').doc(uid);
+  const balance = await db.runTransaction(async tx => {
+    const u = await tx.get(ref);
+    if (!u.exists) throw httpError(404, 'ইউজার নেই');
+    if ((u.data().balance || 0) + amount < 0) throw httpError(400, 'ব্যালেন্স ঋণাত্মক হবে না');
+    return creditTx(tx, uid, u.data(), amount, 'admin_adjustment', String(req.body.reason || '').slice(0, 200));
+  });
+  res.json({ success: true, balance });
+}));
+
+// ================= বট (Webhook) =================
+function welcomeText(from) {
+  return `🎉 স্বাগতম ${from.first_name || ''}!\n\n` +
+    `Bank Master-এ আয় শুরু করতে নিচের বাটনে চাপুন।\n\n` +
+    `✅ প্রতিদিন লগইন করে বোনাস নিন\n` +
+    `✅ টাস্ক সম্পন্ন করে টাকা জিতুন\n` +
+    `✅ বন্ধুকে রেফার করে বোনাস পান`;
+}
+
+async function handleMessage(msg) {
+  if (!msg || !msg.text || !msg.from) return;
+  const text = msg.text.trim();
+  const chatId = msg.chat.id;
+
+  if (text.startsWith('/start')) {
+    const param = text.split(/\s+/)[1];
+    await ensureUser(msg.from, param);
+    return bot.sendMessage(chatId, welcomeText(msg.from), {
+      reply_markup: { inline_keyboard: [[{ text: '🚀 অ্যাপ খুলুন', web_app: { url: WEB_APP_URL } }]] },
+    });
+  }
+  if (text.startsWith('/balance')) {
+    const u = await ensureUser(msg.from);
+    return bot.sendMessage(chatId, `💰 বর্তমান ব্যালেন্স: ${u.balance} ৳\n📈 মোট অর্জিত: ${u.totalEarned} ৳`);
+  }
+  if (text.startsWith('/stats')) {
+    if (!ADMIN_IDS.includes(String(msg.from.id))) return bot.sendMessage(chatId, '⛔ শুধু অ্যাডমিন দেখতে পারবেন');
+    const users = await db.collection('users').count().get();
+    const pend = await db.collection('withdrawals').where('status', '==', 'pending').count().get();
+    return bot.sendMessage(chatId, `👥 মোট ইউজার: ${users.data().count}\n⏳ পেন্ডিং উইথড্র: ${pend.data().count}`);
+  }
+}
+
+app.post('/tg', wrap(async (req, res) => {
+  if (req.get('x-telegram-bot-api-secret-token') !== WEBHOOK_SECRET) return res.sendStatus(403);
+  try {
+    await handleMessage(req.body.message);
+  } catch (e) {
+    console.error('bot error:', e.message);
+  }
+  res.sendStatus(200);
+}));
+
+app.get('/setup-webhook', wrap(async (req, res) => {
+  if (!SETUP_KEY || req.query.key !== SETUP_KEY) return res.sendStatus(403);
+  await bot.setWebHook(`${API_URL}/tg`, { secret_token: WEBHOOK_SECRET });
+  res.json({ success: true, message: 'Webhook সেট হয়েছে' });
+}));
+
+app.get('/', (req, res) => res.json({ ok: true, message: 'Bank Master API চলছে' }));
+
+app.use((err, req, res, next) => {
+  if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+  console.error(err);
+  res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে' });
+});
+
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(process.env.PORT || 3000, () => console.log('Local server চালু'));
+}
