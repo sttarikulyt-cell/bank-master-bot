@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ক্লায়েন্ট সরাসরি কিছুই পড়বে/লিখবে না। সব কাজ API-এর মাধ্যমে হয়।
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
